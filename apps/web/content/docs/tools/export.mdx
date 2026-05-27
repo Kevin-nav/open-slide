@@ -1,6 +1,6 @@
 ---
 title: Export
-description: One command to a self-contained static HTML site, PDF, or PPTX.
+description: `open-slide build` creates a static HTML site; PDF/PPTX come from dev-server export commands.
 ---
 
 `open-slide build` produces a plain static site under `dist/`. The output is
@@ -97,7 +97,7 @@ const config: OpenSlideConfig = {
   build: {
     showSlideBrowser: false,    // hide the deck index
     showSlideUi: false,         // hide on-canvas UI (toolbar etc.)
-    allowHtmlDownload: false,   // hide HTML/PDF downloads
+    allowHtmlDownload: false,   // hide HTML download (PDF unaffected)
     allowPptxDownload: false,   // hide PPTX downloads
   },
 };

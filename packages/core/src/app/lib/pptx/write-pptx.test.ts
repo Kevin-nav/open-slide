@@ -100,6 +100,40 @@ describe('writePptxFile', () => {
     expect(xml).toContain(' text');
   });
 
+  it('does not replace ordinary slide text that resembles old equation tokens', async () => {
+    const blob = await writePptxFile({
+      title: 'Equation token collision test',
+      slides: [
+        {
+          width: 1920,
+          height: 1080,
+          nodes: [
+            {
+              ...textNode,
+              text: 'Literal OSD_PPTX_EQUATION_0 text',
+            },
+            {
+              fallbackText: 'x squared',
+              kind: 'equation',
+              latex: 'x^2',
+              style: { fontFace: 'Cambria Math', fontSize: 30 },
+              x: 120,
+              y: 320,
+              w: 320,
+              h: 80,
+            },
+          ],
+          diagnostics: [],
+        },
+      ],
+    });
+
+    const xml = await readPptxXml(blob, 'ppt/slides/slide1.xml');
+
+    expect(xml).toContain('Literal OSD_PPTX_EQUATION_0 text');
+    expect(xml).toContain('<m:oMathPara>');
+  });
+
   it('exports preserved rich text lines as separate editable text boxes', async () => {
     const blob = await writePptxFile({
       title: 'Measured rich text lines test',

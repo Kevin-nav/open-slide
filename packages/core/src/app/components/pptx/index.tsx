@@ -1,3 +1,4 @@
+import createDOMPurify from 'dompurify';
 import type { HTMLAttributes, ImgHTMLAttributes } from 'react';
 import Temml from 'temml';
 
@@ -101,7 +102,12 @@ export function PptxEquation({
   ...props
 }: PptxEquationProps) {
   const text = fallbackText ?? latex ?? mathml ?? children;
-  const preview = latex ? renderLatexPreview(latex, !inline) : mathml;
+  const sanitizedMathml = mathml ? sanitizeMathHtml(mathml) : undefined;
+  const preview = latex
+    ? renderLatexPreview(latex, !inline)
+    : sanitizedMathml
+      ? sanitizedMathml
+      : null;
   return (
     <div
       {...props}
@@ -109,7 +115,7 @@ export function PptxEquation({
       aria-label={typeof text === 'string' ? text : props['aria-label']}
       data-osd-pptx-kind="equation"
       data-osd-pptx-latex={latex}
-      data-osd-pptx-mathml={mathml}
+      data-osd-pptx-mathml={sanitizedMathml}
       data-osd-pptx-inline={inline ? 'true' : undefined}
       data-osd-pptx-fallback={fallbackText}
       {...(preview ? { dangerouslySetInnerHTML: { __html: preview } } : {})}
@@ -121,14 +127,45 @@ export function PptxEquation({
 
 function renderLatexPreview(source: string, displayMode: boolean): string | null {
   try {
-    return Temml.renderToString(normalizeLatexSource(source), {
-      displayMode,
-      throwOnError: false,
-      trust: true,
-    });
+    return sanitizeMathHtml(
+      Temml.renderToString(normalizeLatexSource(source), {
+        displayMode,
+        throwOnError: false,
+        trust: false,
+      }),
+    );
   } catch {
     return null;
   }
+}
+
+function sanitizeMathHtml(html: string): string {
+  const sanitizer = createDOMPurify as unknown as {
+    sanitize?: (dirty: string, config?: Record<string, unknown>) => string;
+  };
+  if (typeof sanitizer.sanitize === 'function') {
+    return sanitizer.sanitize(html, {
+      ADD_ATTR: [
+        'class',
+        'display',
+        'fence',
+        'form',
+        'linethickness',
+        'mathvariant',
+        'movablelimits',
+        'separator',
+        'stretchy',
+        'style',
+        'width',
+      ],
+      USE_PROFILES: { html: true, mathMl: true },
+    });
+  }
+
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\s+(?:href|src|xlink:href)\s*=\s*(["'])\s*javascript:[\s\S]*?\1/gi, '');
 }
 
 function normalizeLatexSource(source: string): string {

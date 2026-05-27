@@ -68,6 +68,20 @@ describe('pptx primitives', () => {
     expect(html).toContain('aria-label="E = m c^2"');
   });
 
+  it('sanitizes raw MathML previews before injecting them into the page', () => {
+    const html = renderToStaticMarkup(
+      <PptxEquation
+        mathml='<math><mtext onload="alert(1)">safe</mtext><script>alert(1)</script></math>'
+        fallbackText="safe"
+      />,
+    );
+
+    expect(html).toContain('<math>');
+    expect(html).toContain('safe');
+    expect(html).not.toContain('onload');
+    expect(html).not.toContain('<script');
+  });
+
   it('renders browser previews for common LaTeX equations', () => {
     const displayHtml = renderToStaticMarkup(
       <PptxEquation

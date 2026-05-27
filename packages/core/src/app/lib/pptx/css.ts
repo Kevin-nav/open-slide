@@ -1,25 +1,5 @@
 import { resolvePptxFontFace } from './fonts';
-import { PPTX_CANVAS_HEIGHT, PPTX_CANVAS_WIDTH } from './scene';
-
-export type PptxRect = {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  rotation?: number;
-};
-
-export type PptxTextStyle = {
-  fontFace?: string;
-  fontSize?: number;
-  color?: string;
-  bold?: boolean;
-  italic?: boolean;
-  lineHeight?: number;
-  charSpacing?: number;
-  align?: 'left' | 'center' | 'right' | 'justify';
-  fontFallbackWarning?: string;
-};
+import { PPTX_CANVAS_HEIGHT, PPTX_CANVAS_WIDTH, type PptxRect, type PptxTextStyle } from './scene';
 
 const HEX_COLOR_RE = /^#(?<hex>[0-9a-f]{3}|[0-9a-f]{6})$/i;
 const RGB_COLOR_RE =

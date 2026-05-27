@@ -176,7 +176,7 @@ export function addEquationNode(
   equationReplacements: PptxEquationReplacement[] = [],
 ): void {
   const omml = createOmmlEquation(node);
-  const token = omml ? `OSD_PPTX_EQUATION_${equationReplacements.length}` : null;
+  const token = omml ? createEquationToken() : null;
   if (token && omml) {
     equationReplacements.push({ omml, token });
   }
@@ -189,6 +189,15 @@ export function addEquationNode(
     breakLine: false,
     ...textStyleProps(node.style),
   });
+}
+
+function createEquationToken(): string {
+  const uuid = globalThis.crypto?.randomUUID?.() ?? randomTokenFallback();
+  return `__OSD_PPTX_EQUATION_${uuid}__`;
+}
+
+function randomTokenFallback(): string {
+  return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
 }
 
 export function addTableNode(slide: PptxSlide, node: PptxTableNode): void {

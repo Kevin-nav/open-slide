@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { PptxSlideScene } from './scene';
 import { createPptxExportReport, logPptxExportReport, summarizePptxScene } from './report';
+import type { PptxSlideScene } from './scene';
 
 const scene: PptxSlideScene = {
   width: 1920,
   height: 1080,
-  diagnostics: [{ level: 'warn', message: 'unsupported filter' }],
+  diagnostics: [
+    { level: 'warn', message: 'unsupported filter' },
+    { level: 'info', message: 'native text exported' },
+  ],
   nodes: [
     { kind: 'text', text: 'Title', style: {}, x: 0, y: 0, w: 100, h: 40 },
     {

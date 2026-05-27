@@ -161,7 +161,7 @@ The user provided screenshots repeatedly showing the exported PPTX still had maj
 
 ## Architecture Overview (at session end)
 
-```
+```text
 React slide component
     ↓
 export-pptx.ts — render offscreen at 1920×1080, apply CSS vars, wait for paint/fonts

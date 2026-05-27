@@ -14,13 +14,14 @@ export type PptxExportReport = {
 };
 
 export function summarizePptxScene(slideIndex: number, scene: PptxSlideScene): PptxSlideReport {
+  const warningDiagnostics = scene.diagnostics.filter((diagnostic) => diagnostic.level === 'warn');
   const report: PptxSlideReport = {
     slideIndex,
     nativeCount: 0,
     nativeReducedCount: 0,
     rasterCount: 0,
     omittedCount: 0,
-    warnings: scene.diagnostics.map(formatDiagnostic),
+    warnings: warningDiagnostics.map(formatDiagnostic),
   };
 
   for (const node of scene.nodes) {

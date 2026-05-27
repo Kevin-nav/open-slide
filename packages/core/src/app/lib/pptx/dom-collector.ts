@@ -609,6 +609,17 @@ function readUniformStroke(borderSides: BorderSide[]): PptxShapeNode['stroke'] |
     return undefined;
   }
 
+  if (
+    !borderSides.every(
+      (borderSide) =>
+        borderSide.color === first.color &&
+        borderSide.dash === first.dash &&
+        borderSide.width === first.width,
+    )
+  ) {
+    return undefined;
+  }
+
   return {
     ...(first.color ? { color: first.color } : {}),
     ...(first.dash ? { dash: first.dash } : {}),

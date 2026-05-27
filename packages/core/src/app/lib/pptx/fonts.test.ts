@@ -16,9 +16,7 @@ describe('pptx font fallback policy', () => {
   });
 
   it('resolves editorial serif stacks to a PowerPoint-safe fallback', () => {
-    expect(
-      resolvePptxFontFace('"Iowan Old Style", "Times New Roman", Georgia, serif'),
-    ).toEqual({
+    expect(resolvePptxFontFace('"Iowan Old Style", "Times New Roman", Georgia, serif')).toEqual({
       fontFace: 'Times New Roman',
       warning: 'Font fallback: Iowan Old Style -> Times New Roman',
     });
@@ -28,6 +26,17 @@ describe('pptx font fallback policy', () => {
     expect(resolvePptxFontFace('Inter, Arial, sans-serif')).toEqual({
       fontFace: 'Arial',
       warning: 'Font fallback: Inter -> Arial',
+    });
+  });
+
+  it('resolves lowercase safe fonts to canonical PowerPoint names', () => {
+    expect(resolvePptxFontFace('arial, sans-serif')).toEqual({
+      fontFace: 'Arial',
+      warning: 'Font fallback: arial -> Arial',
+    });
+    expect(resolvePptxFontFace('georgia, serif')).toEqual({
+      fontFace: 'Georgia',
+      warning: 'Font fallback: georgia -> Georgia',
     });
   });
 

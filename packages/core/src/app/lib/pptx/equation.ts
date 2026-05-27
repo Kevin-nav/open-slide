@@ -7,13 +7,18 @@ const WORD_PROCESSING_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2
 const DRAWING_2010_NS = 'http://schemas.microsoft.com/office/drawing/2010/main';
 
 export function createOmmlEquation(node: PptxEquationNode): string | null {
-  const source = node.latex ?? node.mathml;
+  const latex = nonEmptyValue(node.latex);
+  const mathmlSource = nonEmptyValue(node.mathml);
+  const source = latex ?? mathmlSource;
   if (!source) {
     return null;
   }
 
   try {
-    const mathml = node.mathml ?? latexToMathml(source, !node.inline);
+    const mathml = latex ? latexToMathml(latex, !node.inline) : mathmlSource;
+    if (!mathml) {
+      return null;
+    }
     const omml = applyOmmlTextStyle(
       repairGeneratedOmml(normalizeGeneratedOmml(mml2omml(mathml)), mathml),
       node,
@@ -42,8 +47,12 @@ function latexToMathml(source: string, displayMode: boolean): string {
   return Temml.renderToString(normalizeLatexSource(source), {
     displayMode,
     throwOnError: true,
-    trust: true,
+    trust: false,
   });
+}
+
+function nonEmptyValue(value: string | undefined): string | undefined {
+  return value?.trim() ? value : undefined;
 }
 
 function normalizeLatexSource(source: string): string {

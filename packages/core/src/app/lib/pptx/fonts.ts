@@ -1,4 +1,4 @@
-const POWERPOINT_SAFE_FONTS = new Set([
+const POWERPOINT_SAFE_FONTS = [
   'Aptos',
   'Arial',
   'Calibri',
@@ -9,7 +9,10 @@ const POWERPOINT_SAFE_FONTS = new Set([
   'Helvetica',
   'Times New Roman',
   'Verdana',
-]);
+];
+const POWERPOINT_SAFE_FONT_MAP = new Map(
+  POWERPOINT_SAFE_FONTS.map((fontFace) => [fontFace.toLowerCase(), fontFace]),
+);
 
 export type ResolvedPptxFont = {
   fontFace: string;
@@ -23,8 +26,11 @@ export function resolvePptxFontFace(fontFamily: string): ResolvedPptxFont | unde
     return undefined;
   }
 
-  if (POWERPOINT_SAFE_FONTS.has(first)) {
-    return { fontFace: first };
+  const safeFont = canonicalSafeFont(first);
+  if (safeFont) {
+    return safeFont === first
+      ? { fontFace: safeFont }
+      : { fontFace: safeFont, warning: `Font fallback: ${first} -> ${safeFont}` };
   }
 
   const fallback =
@@ -58,9 +64,14 @@ export function parseFontFamilies(fontFamily: string): string[] {
 }
 
 function findFamily(families: string[], candidates: string[]): string | undefined {
-  return candidates.find((candidate) => families.includes(candidate));
+  const normalizedFamilies = families.map((family) => family.toLowerCase());
+  return candidates.find((candidate) => normalizedFamilies.includes(candidate.toLowerCase()));
 }
 
 function hasGeneric(families: string[], generic: string): boolean {
   return families.some((family) => family.toLowerCase() === generic);
+}
+
+function canonicalSafeFont(fontFace: string): string | undefined {
+  return POWERPOINT_SAFE_FONT_MAP.get(fontFace.toLowerCase());
 }

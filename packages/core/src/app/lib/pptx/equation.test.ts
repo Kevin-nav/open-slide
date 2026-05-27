@@ -22,6 +22,25 @@ describe('pptx equations', () => {
     expect(omml).toContain('<m:t xml:space="preserve">2</m:t>');
   });
 
+  it('falls back to MathML when LaTeX is empty', () => {
+    const omml = createOmmlEquation({
+      fallbackText: 'x squared',
+      kind: 'equation',
+      latex: '   ',
+      mathml: '<math><msup><mi>x</mi><mn>2</mn></msup></math>',
+      style: {},
+      x: 0,
+      y: 0,
+      w: 100,
+      h: 50,
+    });
+
+    expect(omml).toContain('<m:oMathPara>');
+    expect(omml).toContain('<m:sSup>');
+    expect(omml).toContain('<m:t xml:space="preserve">x</m:t>');
+    expect(omml).toContain('<m:t xml:space="preserve">2</m:t>');
+  });
+
   it('creates editable display math for integrals and fractions', () => {
     const omml = createOmmlEquation({
       fallbackText: '\u222B\u2080\u00B9 x\u00B2 dx = 1/3',

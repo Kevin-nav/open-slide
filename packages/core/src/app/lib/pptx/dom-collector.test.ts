@@ -749,6 +749,43 @@ describe('collectDomPptxScene', () => {
     ]);
   });
 
+  it('does not export mixed border sides as one uniform stroke', () => {
+    const box = testElement({
+      rect: { height: 120, width: 240, x: 20, y: 30 },
+      style: {
+        backgroundColor: 'rgb(255, 250, 240)',
+        borderBottomColor: 'rgb(26, 24, 21)',
+        borderBottomStyle: 'solid',
+        borderBottomWidth: '1px',
+        borderLeftColor: 'rgb(26, 24, 21)',
+        borderLeftStyle: 'solid',
+        borderLeftWidth: '1px',
+        borderRightColor: 'rgb(179, 74, 42)',
+        borderRightStyle: 'solid',
+        borderRightWidth: '1px',
+        borderTopColor: 'rgb(26, 24, 21)',
+        borderTopStyle: 'solid',
+        borderTopWidth: '1px',
+      },
+    });
+    const canvas = testElement({
+      children: [box],
+      rect: { height: 1080, width: 1920, x: 0, y: 0 },
+    });
+    vi.stubGlobal('getComputedStyle', (el: TestElement) => el.__style);
+
+    const scene = collectDomPptxScene(canvas as unknown as HTMLElement);
+
+    expect(scene.nodes).toEqual([
+      expect.objectContaining({
+        fill: 'FFFAF0',
+        kind: 'shape',
+        shape: 'rect',
+      }),
+    ]);
+    expect(scene.nodes[0]).not.toEqual(expect.objectContaining({ stroke: expect.anything() }));
+  });
+
   it('collects group children instead of treating the group as a primitive leaf', () => {
     const child = testElement({
       rect: { height: 60, width: 200, x: 40, y: 50 },
