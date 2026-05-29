@@ -61,7 +61,7 @@ export async function writePptxFile(request: WritePptxFileRequest): Promise<Blob
 
     for (const node of scene.nodes) {
       if (!isRenderableNode(node)) continue;
-      addSceneNode(slide, node, equationReplacements);
+      await addSceneNode(slide, node, equationReplacements);
     }
 
     const notes = request.notes?.[index];
@@ -75,11 +75,11 @@ export async function writePptxFile(request: WritePptxFileRequest): Promise<Blob
     : blob;
 }
 
-function addSceneNode(
+async function addSceneNode(
   slide: PptxSlide,
   node: PptxSceneNode,
   equationReplacements: PptxEquationReplacement[],
-): void {
+): Promise<void> {
   switch (node.kind) {
     case 'text':
       addTextNode(slide, node);
@@ -100,10 +100,10 @@ function addSceneNode(
       addShapeNode(slide, node);
       return;
     case 'image':
-      addImageNode(slide, node);
+      await addImageNode(slide, node);
       return;
     case 'raster':
-      addRasterNode(slide, node);
+      await addRasterNode(slide, node);
       return;
   }
 }
@@ -187,7 +187,7 @@ export function addEquationNode(
     margin: 0,
     fit: 'none',
     breakLine: false,
-    ...textStyleProps(node.style),
+    ...textStyleProps(node.inline ? { ...node.style, align: 'left' } : node.style),
   });
 }
 
@@ -296,9 +296,10 @@ function rectRadiusForNode(node: PptxShapeNode): number | undefined {
   return Math.min(1, Math.max(0, node.radius / shortestSide));
 }
 
-export function addImageNode(slide: PptxSlide, node: PptxImageNode): void {
+export async function addImageNode(slide: PptxSlide, node: PptxImageNode): Promise<void> {
+  const source = await imageSourceProps(node.src, node);
   slide.addImage({
-    ...imageSourceProps(node.src),
+    ...source,
     ...positionProps(node),
     rotate: node.rotation,
     altText: node.alt,
@@ -306,9 +307,10 @@ export function addImageNode(slide: PptxSlide, node: PptxImageNode): void {
   });
 }
 
-export function addRasterNode(slide: PptxSlide, node: PptxRasterNode): void {
+export async function addRasterNode(slide: PptxSlide, node: PptxRasterNode): Promise<void> {
+  const data = await rasterizeSvgDataUrl(node.dataUrl, node);
   slide.addImage({
-    data: node.dataUrl,
+    data: data ?? node.dataUrl,
     ...positionProps(node),
     rotate: node.rotation,
   });
@@ -358,8 +360,50 @@ function chartTypeForNode(node: PptxChartNode) {
   }
 }
 
-function imageSourceProps(src: string): { data: string } | { path: string } {
-  return src.startsWith('data:') ? { data: src } : { path: src };
+async function imageSourceProps(
+  src: string,
+  rect: PptxRect,
+): Promise<{ data: string } | { path: string }> {
+  if (!src.startsWith('data:')) {
+    return { path: src };
+  }
+
+  return { data: (await rasterizeSvgDataUrl(src, rect)) ?? src };
+}
+
+async function rasterizeSvgDataUrl(src: string, rect: PptxRect): Promise<string | null> {
+  if (!src.startsWith('data:image/svg+xml') || typeof Image === 'undefined') {
+    return null;
+  }
+
+  const createElement = globalThis.document?.createElement.bind(globalThis.document);
+  const canvas = createElement?.('canvas');
+  if (typeof HTMLCanvasElement === 'undefined' || !(canvas instanceof HTMLCanvasElement)) {
+    return null;
+  }
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    return null;
+  }
+
+  const scale = 2;
+  canvas.width = Math.max(1, Math.round(rect.w * scale));
+  canvas.height = Math.max(1, Math.round(rect.h * scale));
+
+  const image = new Image();
+  const loaded = new Promise<boolean>((resolve) => {
+    image.onload = () => resolve(true);
+    image.onerror = () => resolve(false);
+  });
+  image.src = src;
+
+  if (!(await loaded)) {
+    return null;
+  }
+
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/png');
 }
 
 function imageSizingProps(node: PptxImageNode) {

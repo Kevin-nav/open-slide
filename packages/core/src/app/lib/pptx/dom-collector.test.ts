@@ -65,10 +65,14 @@ function testElement({
     getBoundingClientRect: () => rectFromInit(rect),
     hasAttribute: (name: string) => attrMap.has(name),
     innerText: (innerText ?? text) || childNodes.map((child) => child.textContent).join(''),
+    parentElement: null,
     setAttribute: (name: string, value: string) => attrMap.set(name, value),
     tagName,
     textContent: text || childNodes.map((child) => child.textContent).join(''),
   };
+  for (const child of childNodes) {
+    (child as unknown as { parentElement: typeof element }).parentElement = element;
+  }
 
   return element as unknown as TestElement;
 }
@@ -264,6 +268,94 @@ describe('collectDomPptxScene', () => {
         ],
         lineBreakPolicy: 'preserve-browser-lines',
         text: 'The better question is not\nwhy did Rome fall',
+      }),
+    ]);
+  });
+
+  it('preserves browser wrapping for text without explicit line breaks', () => {
+    class RangeNode {
+      static TEXT_NODE = 3;
+      childNodes: RangeNode[] = [];
+      textContent = '';
+      constructor(readonly nodeType: number) {}
+    }
+
+    class RangeText extends RangeNode {
+      constructor(readonly data: string) {
+        super(RangeNode.TEXT_NODE);
+        this.textContent = data;
+      }
+    }
+
+    class RangeElement extends RangeNode {
+      __style = defaultStyle;
+      children: RangeElement[];
+      innerText: string;
+      textContent: string;
+
+      constructor(
+        readonly tagName: string,
+        readonly rect: DOMRectInit,
+        childNodes: RangeNode[],
+      ) {
+        super(1);
+        this.childNodes = childNodes;
+        this.children = childNodes.filter(
+          (child): child is RangeElement => child instanceof RangeElement,
+        );
+        this.textContent = childNodes
+          .map((child) => (child instanceof RangeText ? child.data : child.textContent))
+          .join('');
+        this.innerText = this.textContent;
+      }
+
+      getAttribute() {
+        return null;
+      }
+
+      getBoundingClientRect() {
+        return rectFromInit(this.rect);
+      }
+    }
+
+    const text = new RangeText('Models a frozen world. Objects move at constant speeds.');
+    const paragraph = new RangeElement('P', { height: 70, width: 500, x: 100, y: 120 }, [text]);
+    const canvas = new RangeElement('DIV', { height: 1080, width: 1920, x: 0, y: 0 }, [paragraph]);
+    vi.stubGlobal('Node', RangeNode);
+    vi.stubGlobal('Text', RangeText);
+    vi.stubGlobal('Element', RangeElement);
+    vi.stubGlobal('getComputedStyle', (el: RangeElement) => el.__style);
+    vi.stubGlobal('document', {
+      createRange: () => {
+        let start = 0;
+        return {
+          detach: () => undefined,
+          getClientRects: () => [
+            {
+              height: 20,
+              left: start < 23 ? 100 + start : 100 + start - 23,
+              top: start < 23 ? 130 : 160,
+              width: 20,
+            },
+          ],
+          setEnd: () => undefined,
+          setStart: (_node: RangeText, offset: number) => {
+            start = offset;
+          },
+        };
+      },
+    });
+
+    const scene = collectDomPptxScene(canvas as unknown as HTMLElement);
+
+    expect(scene.nodes).toEqual([
+      expect.objectContaining({
+        kind: 'text',
+        lineBreakPolicy: 'preserve-browser-lines',
+        lines: [
+          expect.objectContaining({ text: 'Models a frozen world.' }),
+          expect.objectContaining({ text: 'Objects move at constant speeds.' }),
+        ],
       }),
     ]);
   });
@@ -875,6 +967,118 @@ describe('collectDomPptxScene', () => {
     ]);
   });
 
+  it('collects flex layout text children separately instead of merging them', () => {
+    const left = testElement({
+      rect: { height: 32, width: 360, x: 80, y: 900 },
+      tagName: 'SPAN',
+      text: 'Visualizing Calculus · The Limit',
+    });
+    const right = testElement({
+      rect: { height: 32, width: 80, x: 1720, y: 900 },
+      tagName: 'SPAN',
+      text: '03 / 07',
+    });
+    const footer = testElement({
+      children: [left, right],
+      rect: { height: 50, width: 1720, x: 80, y: 890 },
+      style: { display: 'flex' },
+      tagName: 'DIV',
+    });
+    const canvas = testElement({
+      children: [footer],
+      rect: { height: 1080, width: 1920, x: 0, y: 0 },
+    });
+    vi.stubGlobal('getComputedStyle', (el: TestElement) => el.__style);
+
+    const scene = collectDomPptxScene(canvas as unknown as HTMLElement);
+
+    expect(scene.nodes).toEqual([
+      expect.objectContaining({ kind: 'text', text: 'Visualizing Calculus · The Limit', x: 80 }),
+      expect.objectContaining({ kind: 'text', text: '03 / 07', x: 1720 }),
+    ]);
+    expect(scene.nodes).not.toContainEqual(
+      expect.objectContaining({ text: 'Visualizing Calculus · The Limit03 / 07' }),
+    );
+  });
+
+  it('collects flex label and equation rows as separate nodes', () => {
+    const label = testElement({
+      rect: { height: 34, width: 180, x: 120, y: 420 },
+      tagName: 'SPAN',
+      text: 'Derivative:',
+    });
+    const equation = testElement({
+      attributes: {
+        'data-osd-pptx-fallback': "f'(x) = dy/dx",
+        'data-osd-pptx-kind': 'equation',
+        'data-osd-pptx-latex': "f'(x) = \\frac{dy}{dx}",
+      },
+      rect: { height: 56, width: 260, x: 330, y: 410 },
+      tagName: 'DIV',
+      text: "f'(x) = dy/dx",
+    });
+    const row = testElement({
+      children: [label, equation],
+      rect: { height: 60, width: 520, x: 120, y: 410 },
+      style: { display: 'flex' },
+      tagName: 'DIV',
+    });
+    const canvas = testElement({
+      children: [row],
+      rect: { height: 1080, width: 1920, x: 0, y: 0 },
+    });
+    vi.stubGlobal('getComputedStyle', (el: TestElement) => el.__style);
+
+    const scene = collectDomPptxScene(canvas as unknown as HTMLElement);
+
+    expect(scene.nodes).toEqual([
+      expect.objectContaining({ kind: 'text', text: 'Derivative:', x: 120 }),
+      expect.objectContaining({
+        inline: true,
+        kind: 'equation',
+        latex: "f'(x) = \\frac{dy}{dx}",
+        w: 306,
+        x: 330,
+      }),
+    ]);
+  });
+
+  it('expands editable equations to the surrounding card width', () => {
+    const equation = testElement({
+      attributes: {
+        'data-osd-pptx-fallback': 'integral from a to b f(x) dx = limit sum f(x_i) Delta x',
+        'data-osd-pptx-kind': 'equation',
+        'data-osd-pptx-latex':
+          '\\int_a^b f(x)\\,dx = \\lim_{\\Delta x\\to 0}\\sum_{i=1}^n f(x_i)\\Delta x',
+      },
+      rect: { height: 70, width: 260, x: 180, y: 680 },
+      tagName: 'DIV',
+      text: 'integral from a to b f(x) dx = limit sum f(x_i) Delta x',
+    });
+    const card = testElement({
+      attributes: { 'data-osd-pptx-kind': 'box' },
+      children: [equation],
+      rect: { height: 140, width: 520, x: 135, y: 650 },
+      tagName: 'DIV',
+    });
+    const canvas = testElement({
+      children: [card],
+      rect: { height: 1080, width: 1920, x: 0, y: 0 },
+    });
+    vi.stubGlobal('getComputedStyle', (el: TestElement) => el.__style);
+
+    const scene = collectDomPptxScene(canvas as unknown as HTMLElement);
+
+    expect(scene.nodes).toContainEqual(
+      expect.objectContaining({
+        kind: 'equation',
+        latex: '\\int_a^b f(x)\\,dx = \\lim_{\\Delta x\\to 0}\\sum_{i=1}^n f(x_i)\\Delta x',
+        w: 471,
+        x: 180,
+      }),
+    );
+  });
+
   it('honors explicit primitive shape metadata', () => {
     const ellipse = testElement({
       attributes: { 'data-osd-pptx-kind': 'shape', 'data-osd-pptx-shape': 'ellipse' },
@@ -1105,10 +1309,16 @@ describe('collectDomPptxScene', () => {
     ]);
   });
 
-  it('keeps inline SVG visible as an image fallback without collecting descendants', () => {
+  it('keeps inline SVG visible as a raster fallback without collecting descendants', () => {
     const path = testElement({
+      attributes: { stroke: 'var(--osd-accent)' },
       rect: { height: 200, width: 200, x: 80, y: 90 },
-      style: { borderColor: 'rgb(0, 0, 0)', borderStyle: 'solid', borderTopWidth: '8px' },
+      style: {
+        borderColor: 'rgb(0, 0, 0)',
+        borderStyle: 'solid',
+        borderTopWidth: '8px',
+        stroke: 'rgb(79, 70, 229)',
+      } as Partial<CSSStyleDeclaration>,
       tagName: 'PATH',
     });
     const svg = testElement({
@@ -1124,8 +1334,9 @@ describe('collectDomPptxScene', () => {
     vi.stubGlobal(
       'XMLSerializer',
       class {
-        serializeToString() {
-          return '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+        serializeToString(el: Element) {
+          const child = el.children[0];
+          return `<svg xmlns="${el.getAttribute('xmlns')}" width="${el.getAttribute('width')}" height="${el.getAttribute('height')}"><path stroke="${child?.getAttribute('stroke')}"/></svg>`;
         }
       },
     );
@@ -1134,15 +1345,22 @@ describe('collectDomPptxScene', () => {
 
     expect(scene.nodes).toEqual([
       expect.objectContaining({
-        fit: 'stretch',
+        dataUrl: expect.stringMatching(/^data:image\/svg\+xml;base64,/),
+        decision: {
+          kind: 'raster',
+          reason: 'Inline SVG rasterized to preserve browser-rendered curves and labels',
+        },
         h: 320,
-        kind: 'image',
-        src: expect.stringMatching(/^data:image\/svg\+xml;base64,/),
+        kind: 'raster',
         w: 260,
         x: 40,
         y: 50,
       }),
     ]);
+    const dataUrl = (scene.nodes[0] as { dataUrl: string }).dataUrl;
+    const serialized = Buffer.from(dataUrl.split(',')[1] ?? '', 'base64').toString('utf8');
+    expect(serialized).toContain('stroke="rgb(79, 70, 229)"');
+    expect(serialized).not.toContain('var(--osd-accent)');
   });
 
   it('adds diagnostics for unsupported effects without creating UI state', () => {

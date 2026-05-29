@@ -222,6 +222,7 @@ describe('pptx equations', () => {
     const xml = await readPptxXml(blob, 'ppt/slides/slide1.xml');
 
     expect(xml).toContain('<m:oMathPara>');
+    expect(xml).toContain('<m:jc m:val="left"/>');
     expect(xml).toContain('\u03B2');
     expect(xml).toContain('\u03B1');
     expect(xml).not.toContain('OSD_PPTX_EQUATION');

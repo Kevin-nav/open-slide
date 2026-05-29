@@ -183,7 +183,8 @@ function collectFallbackNode(
     return collectSvgImageNode(el, canvas);
   }
 
-  if (isTextElement(el)) {
+  const style = readComputedStyle(el);
+  if (!isLayoutTextContainer(el, style) && isTextElement(el)) {
     return collectTextNode(el, canvas, diagnostics);
   }
 
@@ -211,11 +212,10 @@ function collectTextNode(
   if (!text) {
     return null;
   }
-  const lineBreakPolicy = lineBreakPolicyForText(text);
-  const renderedLines =
-    lineBreakPolicy === 'preserve-browser-lines'
-      ? readRenderedTextLines(el, canvas, adjustedRect, style)
-      : null;
+  const measuredLines = readRenderedTextLines(el, canvas, adjustedRect, style);
+  const preserveBrowserLines = shouldPreserveBrowserLines(text, measuredLines);
+  const lineBreakPolicy = preserveBrowserLines ? 'preserve-browser-lines' : 'powerpoint-wrap';
+  const renderedLines = preserveBrowserLines ? measuredLines : null;
   addFontFallbackDiagnostic(diagnostics, style, 'text');
 
   if (hasInlineFormatting(el)) {
@@ -301,19 +301,31 @@ function collectEquationNode(
   const mathml = el.getAttribute(PPTX_EQUATION_MATHML_ATTR) ?? undefined;
   const fallbackText =
     el.getAttribute(PPTX_EQUATION_FALLBACK_ATTR) ?? readElementText(el) ?? latex ?? mathml;
+  const style = readElementTextStyle(el);
+  const inline = shouldExportInlineEquation(el, rect, style);
+  const adjustedRect = expandEquationRect(
+    el,
+    canvas,
+    rect,
+    style,
+    latex ?? fallbackText ?? mathml,
+    {
+      inline,
+    },
+  );
   const reason =
     'Equation exported as native OfficeMath from LaTeX; verify complex equations in PowerPoint Desktop';
   diagnostics.push({ level: 'warn', message: reason, nodeKind: 'equation' });
 
   const node = {
-    ...rect,
+    ...adjustedRect,
     decision: { kind: 'native-reduced', reason },
     fallbackText,
-    inline: el.getAttribute(PPTX_EQUATION_INLINE_ATTR) === 'true',
+    inline,
     kind: 'equation',
     ...(latex ? { latex } : {}),
     ...(mathml ? { mathml } : {}),
-    style: readElementTextStyle(el),
+    style,
   } satisfies PptxEquationNode;
 
   return isRenderableNode(node) ? node : null;
@@ -367,10 +379,13 @@ function collectSvgImageNode(el: Element, canvas: HTMLElement): PptxSceneNode | 
 
   const node = {
     ...rect,
-    alt: el.getAttribute('aria-label') ?? undefined,
-    fit: 'stretch',
-    kind: 'image',
-    src: svgToDataUrl(el, rect.w, rect.h),
+    dataUrl: svgToDataUrl(el, rect.w, rect.h),
+    decision: {
+      kind: 'raster',
+      reason: 'Inline SVG rasterized to preserve browser-rendered curves and labels',
+    },
+    kind: 'raster',
+    reason: 'Inline SVG rasterized to preserve browser-rendered curves and labels',
   } satisfies PptxSceneNode;
 
   return isRenderableNode(node) ? node : null;
@@ -451,6 +466,15 @@ function isTextElement(el: Element): boolean {
   );
 }
 
+function isLayoutTextContainer(el: Element, style: CSSStyleDeclaration | null): boolean {
+  if (!style || el.children.length < 2) {
+    return false;
+  }
+
+  const display = readStyleProperty(style, 'display') ?? '';
+  return display.includes('flex') || display.includes('grid');
+}
+
 function hasInlineFormatting(el: Element): boolean {
   return Array.from(el.children).some((child) => {
     const tagName = child.tagName.toUpperCase();
@@ -458,8 +482,92 @@ function hasInlineFormatting(el: Element): boolean {
   });
 }
 
-function lineBreakPolicyForText(text: string): 'preserve-browser-lines' | 'powerpoint-wrap' {
-  return text.includes('\n') ? 'preserve-browser-lines' : 'powerpoint-wrap';
+function shouldPreserveBrowserLines(text: string, lines: PptxTextLine[] | null): boolean {
+  if (text.includes('\n')) {
+    return true;
+  }
+
+  return Boolean(lines && lines.length > 1);
+}
+
+function shouldExportInlineEquation(
+  el: Element,
+  rect: PptxRect,
+  style: PptxTextStyle,
+): boolean | undefined {
+  if (el.getAttribute(PPTX_EQUATION_INLINE_ATTR) === 'true') {
+    return true;
+  }
+
+  const parentDisplay = el.parentElement ? readComputedStyle(el.parentElement)?.display : undefined;
+  if (parentDisplay?.includes('flex') || parentDisplay?.includes('grid')) {
+    return true;
+  }
+
+  const fontSize = style.fontSize;
+  if (fontSize && rect.h <= fontSize * 2.4 && rect.w >= rect.h * 3) {
+    return true;
+  }
+
+  return undefined;
+}
+
+function expandEquationRect(
+  el: Element,
+  canvas: HTMLElement,
+  rect: PptxRect,
+  style: PptxTextStyle,
+  source: string | undefined,
+  options: { inline: boolean | undefined },
+): PptxRect {
+  const context = readEquationLayoutContextRect(el, canvas);
+  const maxWidth = Math.max(
+    rect.w,
+    (context ? context.x + context.w : PPTX_CANVAS_WIDTH) - rect.x - 4,
+  );
+  const contextWidth = context ? maxWidth : 0;
+  const estimatedWidth = estimateEquationWidth(source, style);
+  const inlineMinimum = options.inline ? rect.h * 4 : 0;
+  const width = Math.min(maxWidth, Math.max(rect.w, contextWidth, estimatedWidth, inlineMinimum));
+
+  if (Math.abs(width - rect.w) < 1) {
+    return rect;
+  }
+
+  return { ...rect, w: width };
+}
+
+function readEquationLayoutContextRect(el: Element, canvas: HTMLElement): PptxRect | null {
+  const parent = el.parentElement;
+  if (!parent || parent === canvas) {
+    return null;
+  }
+
+  const style = readComputedStyle(parent);
+  const display = style ? (readStyleProperty(style, 'display') ?? '') : '';
+  const isLayoutContext =
+    display.includes('flex') || display.includes('grid') || parent.hasAttribute(PPTX_KIND_ATTR);
+  if (!isLayoutContext) {
+    return null;
+  }
+
+  return readElementRect(parent, canvas);
+}
+
+function estimateEquationWidth(source: string | undefined, style: PptxTextStyle): number {
+  if (!source) {
+    return 0;
+  }
+
+  const fontSize = style.fontSize ?? 24;
+  const structuralCount = (source.match(/\\(?:begin|binom|frac|int|lim|sum)/g) ?? []).length;
+  const visibleSource = source
+    .replace(/\\[a-zA-Z]+/g, 'M')
+    .replace(/[{}_^]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return visibleSource.length * fontSize * 0.52 + structuralCount * fontSize * 1.4 + fontSize * 2;
 }
 
 function readImageSrc(el: Element): string | undefined {
@@ -1196,10 +1304,45 @@ function svgToDataUrl(el: Element, width: number, height: number): string {
   clone.setAttribute('xmlns', SVG_NS);
   clone.setAttribute('width', String(width));
   clone.setAttribute('height', String(height));
+  inlineSvgComputedPaint(el, clone);
 
   const serialized = new XMLSerializer().serializeToString(clone);
   const bytes = new TextEncoder().encode(serialized);
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return `data:image/svg+xml;base64,${btoa(binary)}`;
+}
+
+function inlineSvgComputedPaint(source: Element, clone: Element): void {
+  const sourceElements = [source, ...descendantElements(source)];
+  const cloneElements = [clone, ...descendantElements(clone)];
+  const paintAttributes = ['fill', 'stroke', 'color', 'stop-color'];
+
+  for (const [index, sourceElement] of sourceElements.entries()) {
+    const cloneElement = cloneElements[index];
+    if (!cloneElement) {
+      continue;
+    }
+
+    const style = readComputedStyle(sourceElement);
+    for (const attribute of paintAttributes) {
+      const value = sourceElement.getAttribute(attribute);
+      if (!value || (!value.includes('var(') && value !== 'currentColor')) {
+        continue;
+      }
+
+      const resolved = style ? readStyleProperty(style, attribute) : undefined;
+      if (resolved && resolved !== value) {
+        cloneElement.setAttribute(attribute, resolved);
+      }
+    }
+  }
+}
+
+function descendantElements(el: Element): Element[] {
+  const descendants: Element[] = [];
+  for (const child of Array.from(el.children)) {
+    descendants.push(child, ...descendantElements(child));
+  }
+  return descendants;
 }

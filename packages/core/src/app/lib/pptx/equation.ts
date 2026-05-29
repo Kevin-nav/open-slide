@@ -23,7 +23,10 @@ export function createOmmlEquation(node: PptxEquationNode): string | null {
       repairGeneratedOmml(normalizeGeneratedOmml(mml2omml(mathml)), mathml),
       node,
     );
-    return omml ? `<m:oMathPara>${omml}</m:oMathPara>` : null;
+    const paragraphProperties = node.inline
+      ? '<m:oMathParaPr><m:jc m:val="left"/></m:oMathParaPr>'
+      : '';
+    return omml ? `<m:oMathPara>${paragraphProperties}${omml}</m:oMathPara>` : null;
   } catch {
     return null;
   }
