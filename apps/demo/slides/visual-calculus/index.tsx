@@ -406,7 +406,7 @@ const Limit: Page = () => (
           }}
         >
           <PptxEquation
-            latex="\lim_{h \to 0} \frac{f(x+h) - f(x)}{h}"
+            latex={String.raw`\lim_{h \to 0} \frac{f(x+h) - f(x)}{h}`}
             style={{
               fontFamily: fonts.serif,
               fontSize: 42,
