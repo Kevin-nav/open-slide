@@ -60,12 +60,69 @@ export default pages;
 export const meta = { title: 'Hello' };
 ```
 
+## PPTX export
+
+The runtime can export the active deck as a PowerPoint file from the download
+menu. The primary target is Microsoft PowerPoint Desktop on Windows and Mac.
+open-slide writes editable PowerPoint text, rich text, shapes, images, charts,
+raster layers, reduced OfficeMath equations, and tables where it can, and reports
+conservative fallbacks for browser-only effects.
+
+Use the PPTX primitives for content that should stay editable:
+
+```tsx
+import {
+  PptxChart,
+  PptxEquation,
+  PptxRasterLayer,
+  PptxTable,
+  PptxText,
+  type Page,
+} from '@open-slide/core';
+
+const Cover: Page = () => (
+  <>
+    <PptxText style={{ position: 'absolute', left: 120, top: 120, fontSize: 72 }}>
+      Editable in PowerPoint
+    </PptxText>
+    <PptxEquation
+      latex="E = mc^2"
+      fallbackText="E = m c squared"
+      style={{ position: 'absolute', left: 120, top: 240, fontSize: 36 }}
+    />
+    <PptxTable
+      columns={['Metric', 'Status']}
+      rows={[['Text', 'Editable']]}
+      style={{ position: 'absolute', left: 120, top: 340, width: 520, height: 160 }}
+    />
+    <PptxChart
+      chartType="bar"
+      labels={['Text', 'Charts']}
+      series={[{ name: 'Editability', values: [95, 88] }]}
+      title="Export score"
+      style={{ position: 'absolute', left: 120, top: 540, width: 520, height: 260 }}
+    />
+    <PptxRasterLayer
+      alt="Decorative texture"
+      dataUrl="data:image/png;base64,..."
+      reason="browser-only texture"
+      style={{ position: 'absolute', left: 720, top: 120, width: 320, height: 220 }}
+    />
+  </>
+);
+```
+
 ## Exports
 
 ```ts
 import {
   CANVAS_WIDTH,   // 1920
   CANVAS_HEIGHT,  // 1080
+  PptxChart,
+  PptxEquation,
+  PptxRasterLayer,
+  PptxTable,
+  PptxText,
   type Page,
   type SlideMeta,
   type SlideModule,

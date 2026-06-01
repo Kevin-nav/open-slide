@@ -1,6 +1,6 @@
 ---
 title: Export
-description: One command to a self-contained static HTML site or PDF.
+description: `open-slide build` creates a static HTML site; PDF/PPTX come from dev-server export commands.
 ---
 
 `open-slide build` produces a plain static site under `dist/`. The output is
@@ -23,6 +23,62 @@ print pipeline. From the toolbar pick **Export → PDF**, or open the deck at
 `?print=1` and use Cmd/Ctrl-P. The runtime sets paper size to 1920×1080
 landscape so each slide is exactly one page.
 
+## PPTX
+
+The dev server can export the active deck to PowerPoint from
+**Export -> PPTX**. The primary target is Microsoft PowerPoint Desktop on
+Windows and Mac. open-slide exports native editable objects where it can and
+falls back conservatively for browser-only effects.
+
+For the best editability, use the PPTX primitives for important content:
+
+```tsx
+import {
+  PptxChart,
+  PptxEquation,
+  PptxRasterLayer,
+  PptxTable,
+  PptxText,
+  type Page,
+} from '@open-slide/core';
+
+const PageOne: Page = () => (
+  <>
+    <PptxText style={{ position: 'absolute', left: 120, top: 120, fontSize: 72 }}>
+      Editable in PowerPoint
+    </PptxText>
+    <PptxEquation
+      latex="\\int_0^1 x^2 dx = 1/3"
+      fallbackText="integral from 0 to 1 of x squared d x equals one third"
+      style={{ position: 'absolute', left: 120, top: 240, fontSize: 36 }}
+    />
+    <PptxTable
+      columns={['Layer', 'Export']}
+      rows={[['Text', 'Native'], ['Effects', 'Raster']]}
+      style={{ position: 'absolute', left: 120, top: 340, width: 620, height: 180 }}
+    />
+    <PptxChart
+      chartType="bar"
+      labels={['Text', 'Charts']}
+      series={[{ name: 'Editability', values: [95, 88] }]}
+      title="Export score"
+      style={{ position: 'absolute', left: 120, top: 560, width: 620, height: 260 }}
+    />
+    <PptxRasterLayer
+      alt="Decorative texture"
+      dataUrl="data:image/png;base64,..."
+      reason="browser-only texture"
+      style={{ position: 'absolute', left: 820, top: 120, width: 320, height: 220 }}
+    />
+  </>
+);
+```
+
+PPTX export logs a developer-facing report for native, reduced-fidelity,
+raster, and omitted objects. Equation primitives currently export reduced
+OfficeMath XML for PowerPoint Desktop and should be round-trip checked before
+claiming full equation fidelity.
+
 ## What gets shipped
 
 The build pipeline only includes:
@@ -41,7 +97,8 @@ const config: OpenSlideConfig = {
   build: {
     showSlideBrowser: false,    // hide the deck index
     showSlideUi: false,         // hide on-canvas UI (toolbar etc.)
-    allowHtmlDownload: false,   // hide the "download HTML" button
+    allowHtmlDownload: false,   // hide HTML download (PDF unaffected)
+    allowPptxDownload: false,   // hide PPTX downloads
   },
 };
 
